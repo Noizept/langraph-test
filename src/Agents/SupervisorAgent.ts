@@ -1,54 +1,62 @@
-import { z } from 'zod';
+import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { ChatOpenAI } from '@langchain/openai';
-import { END, Annotation } from '@langchain/langgraph';
+import { AIMessage, HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { AgentState } from '../State/State'; // Import your state definition
+import { RunnableConfig } from '@langchain/core/runnables';
+import { END } from '@langchain/langgraph';
 
-import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
+const llm = new ChatOpenAI({
+  model: 'gpt-3.5-turbo',
+  temperature: 0,
+});
 
-const members = ['agent', 'customer'] as const;
+// Supervisor Agent
+const supervisorAgent = createReactAgent({
+  llm,
+  tools: [], // No tools needed for the supervisor
+  stateModifier: new SystemMessage(
+    `You are a supervisor agent. Respond with EXACTLY one word: "Workflow" or "Billing". ` +
+      `Do NOT add extra text or punctuation. If you are unsure, respond with "END".`,
+  ),
+});
 
-const systemPrompt =
-  'You are a supervisor tasked with managing a conversation between the' +
-  ' following workers: {members}. Given the following user request,' +
-  ' respond with the worker to act next. Each worker will perform a' +
-  ' task and respond with their results and status. When finished,' +
-  ' respond with FINISH.';
-const options = [END, ...members];
+export const supervisorNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
+  const lastMessage = state.messages[state.messages.length - 1];
 
-// Define the routing function
-const routingTool = {
-  name: 'route',
-  description: 'Select the next role.',
-  schema: z.object({
-    next: z.enum([END, ...members]),
-  }),
-};
+  // Ensure we are only routing based on a USER message
+  if (!(lastMessage instanceof HumanMessage)) {
+    console.log('Skipping Supervisor processing because last message is not from a user.');
+    return {
+      ...state,
+      next: END, // Or continue the workflow
+    };
+  }
 
-const a = async () => {
-  const prompt = ChatPromptTemplate.fromMessages([
-    ['system', systemPrompt],
-    new MessagesPlaceholder('messages'),
-    [
-      'human',
-      'Given the conversation above, who should act next?' +
-        ' Or should we FINISH? Select one of: {options}',
-    ],
-  ]);
+  // Process the user message
+  const result = await supervisorAgent.invoke(state, config);
+  const lastResponse = result.messages[result.messages.length - 1];
 
-  const formattedPrompt = await prompt.partial({
-    options: options.join(', '),
-    members: members.join(', '),
-  });
+  let agentName = lastResponse.content.toString().trim();
 
-  const llm = new ChatOpenAI({
-    model: 'gpt-3.5-turbo',
-  });
+  console.log('Supervisor raw:', agentName);
 
-  const supervisorChain = formattedPrompt
-    .pipe(
-      llm.bindTools([routingTool], {
-        tool_choice: 'route',
+  // Ensure valid routing
+  if (agentName.toLowerCase().includes('billing')) {
+    agentName = 'Billing';
+  } else if (agentName.toLowerCase().includes('workflow')) {
+    agentName = 'Workflow';
+  } else {
+    agentName = END; // End conversation if unknown
+  }
+
+  return {
+    ...state,
+    messages: [
+      new HumanMessage({
+        content: lastResponse.content,
+        name: 'Supervisor',
       }),
-    )
-    // select the first one
-    .pipe((x) => x.tool_calls[0].args);
+    ],
+    next: agentName,
+  };
 };

@@ -1,36 +1,39 @@
-import { ChatOpenAI } from '@langchain/openai';
-import { MemorySaver } from '@langchain/langgraph';
+import readline from 'readline';
 import { HumanMessage } from '@langchain/core/messages';
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import graph from './Graph';
 
-// Define the tools for the agent to use
-const agentModel = new ChatOpenAI({ temperature: 0 });
-
-// Initialize memory to persist state between graph runs
-const agentCheckpointer = new MemorySaver();
-const agent = createReactAgent({
-  llm: agentModel,
-  tools: [],
-  checkpointSaver: agentCheckpointer,
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
 });
 
-const a = async () => {
-  // Now it's time to use!
-  const agentFinalState = await agent.invoke(
-    { messages: [new HumanMessage('what is the current weather in sf')] },
-    { configurable: { thread_id: '42' } },
-  );
+let conversationState: { messages: HumanMessage[] } = { messages: [] };
 
-  console.log(agentFinalState.messages[agentFinalState.messages.length - 1].content);
+const askUser = () => {
+  rl.question('You: ', async (userInput) => {
+    if (userInput.toLowerCase() === 'exit') {
+      console.log('Exiting chat.');
+      rl.close();
+      return;
+    }
 
-  const agentNextState = await agent.invoke(
-    { messages: [new HumanMessage('what about ny')] },
-    { configurable: { thread_id: '42' } },
-  );
+    // Append user message to history
+    conversationState.messages.push(new HumanMessage(userInput));
 
-  console.log(agentNextState.messages[agentNextState.messages.length - 1].content);
+    // Invoke LangGraph
+    const result = await graph.invoke(conversationState);
+
+    // Extract bot response
+    const lastMessage = result.messages[result.messages.length - 1];
+    console.log(`Bot: ${lastMessage.content}`);
+
+    // Update state
+    conversationState = result;
+
+    // Ask for next message
+    askUser();
+  });
 };
 
-a().then(() => {
-  console.log('finished');
-});
+console.log("Chat started. Type 'exit' to end.");
+askUser();
