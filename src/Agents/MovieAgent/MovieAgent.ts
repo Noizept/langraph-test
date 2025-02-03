@@ -23,16 +23,33 @@ const movieAgent = createReactAgent({
 });
 
 export const moviesNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
-  const result = await movieAgent.invoke(state, config);
-  const lastMessage = result.messages[result.messages.length - 1];
-  return {
-    messages: [
-      new AIMessage({
-        content: lastMessage.content,
-        // Put the "Workflow" label in additional_kwargs if you want it for your logs
-        name: 'Movies', // Correctly pass the `name` field
-      }),
-    ],
-    next: END,
-  };
+  try {
+    const result = await movieAgent.invoke(state, config);
+
+    if (!result || !result.messages || result.messages.length === 0) {
+      throw new Error('❌ movieAgent response is empty!');
+    }
+
+    const lastMessage = result.messages[result.messages.length - 1];
+
+    if (!lastMessage) throw new Error('❌ No last message found in movieAgent response!');
+
+    return {
+      messages: [
+        new AIMessage({
+          content: lastMessage.content.toString(),
+          name: 'Movies',
+        }),
+      ],
+      next: END, // Ensure `next` is set correctly
+    };
+  } catch (error) {
+    console.error('❌ Error in moviesNode:', error);
+    return {
+      messages: [
+        new AIMessage({ content: 'I encountered an error. Try again later.', name: 'Movies' }),
+      ],
+      next: END, // Ensure the graph does not get stuck
+    };
+  }
 };
