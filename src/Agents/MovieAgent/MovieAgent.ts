@@ -4,6 +4,7 @@ import { AIMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
 import { AgentState } from '../../State/State';
 import { END } from '@langchain/langgraph';
+import { getMovieRecommendation } from './MovieTools';
 
 const llm = new ChatOpenAI({
   model: 'gpt-3.5-turbo',
@@ -12,26 +13,24 @@ const llm = new ChatOpenAI({
 
 // Recall llm was defined as ChatOpenAI above
 // It could be any other language model
-const workflowAgent = createReactAgent({
+const movieAgent = createReactAgent({
   llm,
-  tools: [],
+  tools: [getMovieRecommendation],
   stateModifier: new SystemMessage(
-    'You are a workflow agent retrieval specialist, every time a user asks for suggestion on what workflow' +
-      'they should choose based on their problem you will retrieve workflows based on that description.' +
-      'Only give ID, name,status, description, tags and who created it.' +
-      'Try be direct as possible without much chatter.',
+    `You are a movie critic and specialist, you love movies and you love to give recommendations` +
+      `on movies plus give a summary on their plot when asking to a recommendation`,
   ),
 });
 
-export const workflowsNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
-  const result = await workflowAgent.invoke(state, config);
+export const moviesNode = async (state: typeof AgentState.State, config?: RunnableConfig) => {
+  const result = await movieAgent.invoke(state, config);
   const lastMessage = result.messages[result.messages.length - 1];
   return {
     messages: [
       new AIMessage({
         content: lastMessage.content,
         // Put the "Workflow" label in additional_kwargs if you want it for your logs
-        name: 'Workflow', // Correctly pass the `name` field
+        name: 'Movies', // Correctly pass the `name` field
       }),
     ],
     next: END,

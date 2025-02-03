@@ -15,7 +15,7 @@ const supervisorAgent = createReactAgent({
   llm,
   tools: [], // No tools needed for the supervisor
   stateModifier: new SystemMessage(
-    `You are a supervisor agent. Respond with EXACTLY one word: "Workflow" or "Billing". ` +
+    `You are a supervisor agent. Respond with EXACTLY one word: "Workflow" or "Billing" or "Movie". ` +
       `Do NOT add extra text or punctuation. If you are unsure, respond with "END".`,
   ),
 });
@@ -45,6 +45,8 @@ export const supervisorNode = async (state: typeof AgentState.State, config?: Ru
     agentName = 'Billing';
   } else if (agentName.toLowerCase().includes('workflow')) {
     agentName = 'Workflow';
+  } else if (agentName.toLowerCase().includes('movie')) {
+    agentName = 'Movie';
   } else {
     agentName = END; // End conversation if unknown
   }
@@ -52,7 +54,7 @@ export const supervisorNode = async (state: typeof AgentState.State, config?: Ru
   return {
     ...state,
     messages: [
-      new HumanMessage({
+      new AIMessage({
         content: lastResponse.content,
         name: 'Supervisor',
       }),
